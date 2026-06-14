@@ -29,6 +29,51 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─── Redpanda (Kafka-compatible broker, no Zookeeper) ──
+  # Why Redpanda: single container, C++ (not JVM), 100% Kafka-API compatible,
+  # fast cold-start, upgrade path to Redpanda Cloud for production.
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.2.16
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - 1G
+      - --reserve-memory
+      - 0M
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "19092:19092"   # external Kafka (host machines connect here)
+      - "9644:9644"     # Prometheus metrics
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ─── Redpanda Console (Kafka topic UI at :8080) ─────
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v2.4.4
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
   # ─── Neo4j (Knowledge Graph v0) ─────────────────────
   neo4j:
     image: neo4j:5-community
@@ -72,6 +117,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-ankush}@postgres:5432/${POSTGRES_DB:-postgres}
       DATABASE_URL_SYNC: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-ankush}@postgres:5432/${POSTGRES_DB:-postgres}
       REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
       ML_SERVICE_URL: http://ml:8001
       UPLOAD_DIR: /app/uploads
     depends_on:
@@ -81,6 +127,8 @@ services:
         condition: service_healthy
       setup:
         condition: service_completed_successfully
+      redpanda:
+        condition: service_started
     volumes:
       - ./backend:/app
       - upload_data:/app/uploads
@@ -95,12 +143,15 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-ankush}@postgres:5432/${POSTGRES_DB:-postgres}
       DATABASE_URL_SYNC: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-ankush}@postgres:5432/${POSTGRES_DB:-postgres}
       REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
       ML_SERVICE_URL: http://ml:8001
     depends_on:
       postgres:
         condition: service_healthy
       setup:
         condition: service_completed_successfully
+      redpanda:
+        condition: service_started
     volumes:
       - ./backend:/app
     command: python -m trigger_service.scheduler
@@ -120,4 +171,5 @@ volumes:
   postgres_data:
   redis_data:
   neo4j_data:
+  redpanda_data:
   upload_data:

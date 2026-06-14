@@ -17,6 +17,11 @@ class Settings(BaseSettings):
 
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Kafka / Redpanda broker address
+    # docker-compose: redpanda:9092 (internal)
+    # local dev without Docker: localhost:19092
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:19092"
+
     JWT_SECRET_KEY: str = "zylo-dev-secret-change-in-production"
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440

@@ -38,5 +38,8 @@ exifread==3.0.0
 # File uploads
 python-multipart==0.0.9
 
+# Kafka (Redpanda-compatible async client)
+aiokafka==0.11.0
+
 # Utilities
 python-dotenv==1.0.1
