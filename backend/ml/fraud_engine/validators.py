@@ -176,3 +176,41 @@ def validate_timezone_consistency(device_timezone: Any, expected_timezone: str =
 		"expected_timezone": expected_timezone_text,
 		"flag": None if consistent else "timezone_mismatch",
 	}
+
+
+def validate_velocity_impossibility(
+	previous_zone_coords: Any,
+	current_zone_coords: Any,
+	previous_timestamp: Any,
+	current_timestamp: Any,
+	max_speed_kmph: float = 80.0,
+) -> dict[str, Any]:
+	"""Flag claims that imply travel faster than a realistic rider speed."""
+
+	previous_coords = _coerce_gps_pair(previous_zone_coords)
+	current_coords = _coerce_gps_pair(current_zone_coords)
+	previous_time = _parse_timestamp(previous_timestamp)
+	current_time = _parse_timestamp(current_timestamp)
+
+	if previous_coords is None or current_coords is None or previous_time is None or current_time is None:
+		return {
+			"impossible": False,
+			"distance_km": None,
+			"time_window_minutes": None,
+			"required_speed_kmph": None,
+			"flag": "missing_velocity_inputs",
+		}
+
+	time_window_seconds = abs((current_time - previous_time).total_seconds())
+	time_window_hours = time_window_seconds / 3600.0
+	distance_km = _haversine_distance_km(previous_coords, current_coords)
+	required_speed_kmph = float("inf") if time_window_hours == 0 else distance_km / time_window_hours
+	impossible = required_speed_kmph > float(max_speed_kmph)
+
+	return {
+		"impossible": impossible,
+		"distance_km": round(distance_km, 3),
+		"time_window_minutes": round(time_window_seconds / 60.0, 3),
+		"required_speed_kmph": None if required_speed_kmph == float("inf") else round(required_speed_kmph, 3),
+		"flag": None if not impossible else "travel_speed_impossible",
+	}
