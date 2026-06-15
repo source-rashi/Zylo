@@ -161,3 +161,18 @@ def validate_gps_delta(
 		"radius_km": float(radius_km),
 		"flag": None if within_radius else "gps_outside_allowed_radius",
 	}
+
+
+def validate_timezone_consistency(device_timezone: Any, expected_timezone: str = "IST") -> dict[str, Any]:
+	"""Verify that the submitted device timezone matches the zone expectation."""
+
+	device_timezone_text = str(device_timezone or "").strip().upper()
+	expected_timezone_text = str(expected_timezone or "IST").strip().upper()
+	consistent = device_timezone_text == expected_timezone_text
+
+	return {
+		"consistent": consistent,
+		"device_timezone": device_timezone_text or None,
+		"expected_timezone": expected_timezone_text,
+		"flag": None if consistent else "timezone_mismatch",
+	}
