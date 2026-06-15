@@ -23,6 +23,7 @@ from shared.redis_client import close_redis
 from rider_service.router import router as rider_router
 from policy_service.router import router as policy_router
 from premium_service.router import router as premium_router
+from api.routers.ml_router import router as ml_router
 from trigger_service.router import router as trigger_router
 from claims_service.router import router as claims_router
 from payout_service.router import router as payout_router
@@ -130,6 +131,9 @@ app.include_router(admin_router, prefix="/api/admin", tags=["Admin (Dev 5)"])
 
 # Dev 5: Manual Claims
 app.include_router(manual_claims_router, prefix="/api/claims/manual", tags=["Manual Claims (Dev 5)"])
+
+# Dev 2/Phase 2: ML inference endpoints
+app.include_router(ml_router, tags=["ML (Phase 2)"])
 
 
 # ─── Health Check ────────────────────────────────────
