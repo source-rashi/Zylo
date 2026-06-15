@@ -10,6 +10,9 @@ import numpy as np
 import joblib
 from lightgbm import LGBMClassifier
 
+from ..data_synthesis.generator import generate_rider_profiles
+from .features import build_feature_vector
+
 
 @dataclass
 class RiskModel:
@@ -98,3 +101,57 @@ def load_risk_model(model_path: str | Path) -> RiskModel:
 	"""Convenience loader for persisted risk models."""
 
 	return RiskModel.load(model_path)
+
+
+def _synthetic_risk_label(feature_vector: np.ndarray) -> int:
+	"""Derive a deterministic training label from a synthetic feature vector."""
+
+	risk_signal = (
+		feature_vector[0] * 0.55
+		+ feature_vector[1] * 0.18
+		+ feature_vector[2] * 1.7
+		+ feature_vector[3] * 0.22
+	)
+	return int(risk_signal >= 1.15)
+
+
+def train_on_synthetic_data(sample_size: int = 2_000, seed: int = 42) -> RiskModel:
+	"""Train the risk model on synthetic rider profile data."""
+
+	rider_profiles = generate_rider_profiles(n_riders=sample_size, seed=seed)
+	feature_rows: list[np.ndarray] = []
+	target_rows: list[int] = []
+
+	for rider_profile in rider_profiles.to_dict(orient="records"):
+		feature_vector = build_feature_vector(
+			rider_profile["zone_id"],
+			rider_profile["time_slot"],
+			rider_profile,
+		)
+		feature_rows.append(feature_vector)
+		target_rows.append(_synthetic_risk_label(feature_vector))
+
+	model = build_risk_model()
+	model.train(np.asarray(feature_rows, dtype=np.float32), np.asarray(target_rows, dtype=np.int32))
+	return model
+
+
+def verify_synthetic_risk_score_range(sample_size: int = 12, seed: int = 42) -> tuple[float, float]:
+	"""Train on synthetic data and verify the output score range."""
+
+	model = train_on_synthetic_data(sample_size=sample_size, seed=seed)
+	rider_profiles = generate_rider_profiles(n_riders=sample_size, seed=seed + 7)
+	scores = []
+
+	for rider_profile in rider_profiles.to_dict(orient="records"):
+		feature_vector = build_feature_vector(
+			rider_profile["zone_id"],
+			rider_profile["time_slot"],
+			rider_profile,
+		)
+		score = model.predict_risk_score(feature_vector)
+		if not 0.0 <= score <= 1.0:
+			raise ValueError(f"Risk score out of range: {score}")
+		scores.append(score)
+
+	return float(min(scores)), float(max(scores))
