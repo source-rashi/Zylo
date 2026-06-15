@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional, Tuple
@@ -112,4 +113,51 @@ def extract_exif_timestamp_and_gps(photo_exif_data: Any) -> dict[str, Any]:
 	return {
 		"timestamp": timestamp,
 		"gps_coords": gps_coords,
+	}
+
+
+def _haversine_distance_km(left_coords: Tuple[float, float], right_coords: Tuple[float, float]) -> float:
+	"""Calculate the great-circle distance between two latitude/longitude points."""
+
+	latitude_1, longitude_1 = left_coords
+	latitude_2, longitude_2 = right_coords
+
+	latitude_1_rad = math.radians(latitude_1)
+	latitude_2_rad = math.radians(latitude_2)
+	latitude_delta = math.radians(latitude_2 - latitude_1)
+	longitude_delta = math.radians(longitude_2 - longitude_1)
+
+	component = (
+		math.sin(latitude_delta / 2) ** 2
+		+ math.cos(latitude_1_rad) * math.cos(latitude_2_rad) * math.sin(longitude_delta / 2) ** 2
+	)
+	return 6371.0 * (2 * math.atan2(math.sqrt(component), math.sqrt(1 - component)))
+
+
+def validate_gps_delta(
+	claim_gps_coords: Any,
+	zone_gps_coords: Any,
+	radius_km: float = 3.0,
+) -> dict[str, Any]:
+	"""Check whether a claim GPS location falls within a zone radius."""
+
+	claim_coords = _coerce_gps_pair(claim_gps_coords)
+	zone_coords = _coerce_gps_pair(zone_gps_coords)
+
+	if claim_coords is None or zone_coords is None:
+		return {
+			"within_radius": False,
+			"distance_km": None,
+			"radius_km": float(radius_km),
+			"flag": "missing_gps_coordinates",
+		}
+
+	distance_km = _haversine_distance_km(claim_coords, zone_coords)
+	within_radius = distance_km <= float(radius_km)
+
+	return {
+		"within_radius": within_radius,
+		"distance_km": round(distance_km, 3),
+		"radius_km": float(radius_km),
+		"flag": None if within_radius else "gps_outside_allowed_radius",
 	}
