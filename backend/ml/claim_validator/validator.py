@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 import numpy as np
 
 from ml.claim_validator.schemas import ClaimSubmission, ClaimValidationResult
 from ml.fraud_engine.detector import FraudDetector, FraudResult, build_fraud_detector
+from shared.redis_client import get_redis
 
 
 _ZONE_COORDINATES: dict[str, tuple[float, float]] = {
@@ -23,6 +26,7 @@ _ZONE_COORDINATES: dict[str, tuple[float, float]] = {
 }
 
 _FRAUD_DETECTOR: FraudDetector | None = None
+_MANUAL_REVIEW_QUEUE = "manual_review_queue"
 
 
 def _zone_coordinates(zone_id: str) -> tuple[float, float]:
@@ -65,7 +69,28 @@ def _rejection_reason(result: FraudResult) -> str:
     return f"Claim rejected by AI validation: {', '.join(result.flags)}"
 
 
-def validate_claim_submission(submission: ClaimSubmission) -> ClaimValidationResult:
+async def _push_to_manual_review_queue(submission: ClaimSubmission, fraud_result: FraudResult) -> str:
+    """Persist manual review payloads for later human adjudication."""
+
+    redis = await get_redis()
+    payload = {
+        "claim_id": str(UUID(bytes=submission.rider_id.bytes[:16])) if hasattr(submission.rider_id, "bytes") else str(submission.rider_id),
+        "rider_id": str(submission.rider_id),
+        "zone_id": submission.zone_id,
+        "submitted_at": submission.submitted_at.isoformat(),
+        "flags": fraud_result.flags,
+        "spam_score": fraud_result.spam_score,
+    }
+    queue_item = json.dumps(payload)
+    if hasattr(redis, "rpush"):
+        await redis.rpush(_MANUAL_REVIEW_QUEUE, queue_item)
+    else:
+        mock_queue = getattr(redis, "data", {}).setdefault(_MANUAL_REVIEW_QUEUE, [])
+        mock_queue.append(queue_item)
+    return _MANUAL_REVIEW_QUEUE
+
+
+async def validate_claim_submission(submission: ClaimSubmission) -> ClaimValidationResult:
     """Run the fraud detector pipeline for a claim submission."""
 
     detector = get_fraud_detector()
@@ -76,13 +101,17 @@ def validate_claim_submission(submission: ClaimSubmission) -> ClaimValidationRes
 
     fraud_result = detector.score_claim(claim_payload)
     rejection_reason = _rejection_reason(fraud_result) if fraud_result.decision == "auto_reject" else None
+    manual_review_queue = None
+
+    if fraud_result.decision == "review":
+        manual_review_queue = await _push_to_manual_review_queue(submission, fraud_result)
 
     return ClaimValidationResult(
         decision=fraud_result.decision,
         spam_score=fraud_result.spam_score,
         flags=fraud_result.flags,
         rejection_reason=rejection_reason,
-        manual_review_queue=None,
+        manual_review_queue=manual_review_queue,
         fraud_metadata={
             "zone_id": submission.zone_id,
             "submitted_at": submission.submitted_at.isoformat(),
