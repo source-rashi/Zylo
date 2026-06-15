@@ -216,3 +216,36 @@ def generate_training_datasets(config: Optional[GeneratorConfig] = None) -> Dict
         "traffic_history": traffic_history,
         "historical_payouts": payouts,
     }
+
+
+def export_training_datasets(
+    output_dir: Optional[Path] = None,
+    config: Optional[GeneratorConfig] = None,
+) -> Dict[str, Path]:
+    """Generate the synthetic datasets and export each one to CSV."""
+
+    config = config or GeneratorConfig()
+    output_dir = output_dir or Path(__file__).resolve().parent / "sample_data"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    datasets = generate_training_datasets(config=config)
+    exported_paths: Dict[str, Path] = {}
+
+    for dataset_name, dataframe in datasets.items():
+        csv_path = output_dir / f"{dataset_name}.csv"
+        dataframe.to_csv(csv_path, index=False)
+        exported_paths[dataset_name] = csv_path
+
+    return exported_paths
+
+
+def main() -> None:
+    """Generate sample CSVs for local experimentation."""
+
+    exported_paths = export_training_datasets()
+    for dataset_name, csv_path in exported_paths.items():
+        print(f"Exported {dataset_name} -> {csv_path}")
+
+
+if __name__ == "__main__":
+    main()
