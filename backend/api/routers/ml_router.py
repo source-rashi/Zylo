@@ -5,6 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from ml.claim_validator.schemas import ClaimSubmission, ClaimValidationResult
+from ml.claim_validator.validator import validate_claim_submission
 from ml.risk_model.features import build_feature_vector
 from ml.risk_model.model import train_on_synthetic_data
 
@@ -21,6 +23,7 @@ class PremiumCalculationRequest(BaseModel):
     rider_id: str
     rider_profile: dict[str, object] = Field(default_factory=dict)
     base_premium: float = 250.0
+
 
 @router.post("/ml/premium/calculate")
 async def calculate_premium(request: PremiumCalculationRequest) -> dict[str, object]:
@@ -57,3 +60,10 @@ async def calculate_premium(request: PremiumCalculationRequest) -> dict[str, obj
         "time_slot": time_slot,
         "base_premium": base_premium,
     }
+
+
+@router.post("/ml/claim/validate", response_model=ClaimValidationResult)
+async def validate_claim(submission: ClaimSubmission) -> ClaimValidationResult:
+    """Validate a manual claim submission using the fraud engine pipeline."""
+
+    return await validate_claim_submission(submission)
