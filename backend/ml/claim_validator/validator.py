@@ -69,6 +69,19 @@ def _rejection_reason(result: FraudResult) -> str:
     return f"Claim rejected by AI validation: {', '.join(result.flags)}"
 
 
+def _rejection_payload(submission: ClaimSubmission, result: FraudResult) -> dict[str, Any]:
+    """Build a structured payload that explains why the claim was rejected."""
+
+    return {
+        "decision": result.decision,
+        "reason": _rejection_reason(result),
+        "spam_score": result.spam_score,
+        "flags": result.flags,
+        "zone_id": submission.zone_id,
+        "submitted_at": submission.submitted_at.isoformat(),
+    }
+
+
 async def _push_to_manual_review_queue(submission: ClaimSubmission, fraud_result: FraudResult) -> str:
     """Persist manual review payloads for later human adjudication."""
 
@@ -102,9 +115,16 @@ async def validate_claim_submission(submission: ClaimSubmission) -> ClaimValidat
     fraud_result = detector.score_claim(claim_payload)
     rejection_reason = _rejection_reason(fraud_result) if fraud_result.decision == "auto_reject" else None
     manual_review_queue = None
+    fraud_metadata = {
+        "zone_id": submission.zone_id,
+        "submitted_at": submission.submitted_at.isoformat(),
+        "zone_gps_coords": _zone_coordinates(submission.zone_id),
+    }
 
     if fraud_result.decision == "review":
         manual_review_queue = await _push_to_manual_review_queue(submission, fraud_result)
+    elif fraud_result.decision == "auto_reject":
+        fraud_metadata["rejection_payload"] = _rejection_payload(submission, fraud_result)
 
     return ClaimValidationResult(
         decision=fraud_result.decision,
@@ -112,9 +132,5 @@ async def validate_claim_submission(submission: ClaimSubmission) -> ClaimValidat
         flags=fraud_result.flags,
         rejection_reason=rejection_reason,
         manual_review_queue=manual_review_queue,
-        fraud_metadata={
-            "zone_id": submission.zone_id,
-            "submitted_at": submission.submitted_at.isoformat(),
-            "zone_gps_coords": _zone_coordinates(submission.zone_id),
-        },
+        fraud_metadata=fraud_metadata,
     )
