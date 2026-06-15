@@ -105,8 +105,13 @@ class FraudDetector:
 			score_components.append(0.32)
 
 		spam_score = float(np.clip(sum(score_components) / len(score_components), 0.0, 1.0))
+		return self.evaluate_result(spam_score=spam_score, flags=flags)
+
+	def evaluate_result(self, spam_score: float, flags: list[str]) -> FraudResult:
+		"""Apply the approval/review/reject thresholds to a spam score."""
+
 		decision = self._decision_from_score(spam_score)
-		return FraudResult(spam_score=spam_score, decision=decision, flags=sorted(set(flags)))
+		return FraudResult(spam_score=float(np.clip(spam_score, 0.0, 1.0)), decision=decision, flags=sorted(set(flags)))
 
 	@staticmethod
 	def _decision_from_score(spam_score: float) -> str:
