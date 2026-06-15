@@ -67,3 +67,22 @@ async def validate_claim(submission: ClaimSubmission) -> ClaimValidationResult:
     """Validate a manual claim submission using the fraud engine pipeline."""
 
     return await validate_claim_submission(submission)
+
+
+@router.get("/ml/health")
+async def ml_health() -> dict[str, object]:
+    """Report ML model load status and fraud engine readiness."""
+
+    global _RISK_MODEL
+    if _RISK_MODEL is None:
+        return {
+            "model_loaded": False,
+            "last_trained_at": None,
+            "fraud_engine_status": "not_loaded",
+        }
+
+    return {
+        "model_loaded": True,
+        "last_trained_at": _RISK_MODEL.last_trained_at,
+        "fraud_engine_status": "ready",
+    }
