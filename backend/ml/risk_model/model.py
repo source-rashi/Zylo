@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional, Sequence
 
 import numpy as np
+import joblib
 from lightgbm import LGBMClassifier
 
 
@@ -57,8 +59,42 @@ class RiskModel:
 		weekly_premium = float(base_premium) * premium_multiplier
 		return float(np.round(np.clip(weekly_premium, base_premium, base_premium * 3.0), 2))
 
+	def save(self, model_path: str | Path) -> Path:
+		"""Persist the trained model to disk."""
+
+		if not self.is_trained:
+			raise RuntimeError("RiskModel must be trained before calling save().")
+
+		path = Path(model_path)
+		path.parent.mkdir(parents=True, exist_ok=True)
+		joblib.dump(
+			{
+				"model": self.model,
+				"is_trained": self.is_trained,
+				"last_trained_at": self.last_trained_at,
+			},
+			path,
+		)
+		return path
+
+	@classmethod
+	def load(cls, model_path: str | Path) -> "RiskModel":
+		"""Restore a model from disk."""
+
+		payload = joblib.load(Path(model_path))
+		instance = cls(model=payload["model"])
+		instance.is_trained = bool(payload.get("is_trained", False))
+		instance.last_trained_at = payload.get("last_trained_at")
+		return instance
+
 
 def build_risk_model() -> RiskModel:
 	"""Factory for the default risk scoring model."""
 
 	return RiskModel()
+
+
+def load_risk_model(model_path: str | Path) -> RiskModel:
+	"""Convenience loader for persisted risk models."""
+
+	return RiskModel.load(model_path)
